@@ -1,0 +1,95 @@
+# Cloud Custodian Policy Template
+# Run with:
+#   custodian run -s <output-dir> -c <policy.yaml> --output-dir /tmp
+# (logged-in via env credentials: AWS_PROFILE / AZURE_SUBSCRIPTION_ID / GOOGLE_CLOUD_PROJECT)
+
+policies:
+
+  # ═════════════════════════════════════════════════════════════════
+  # AWS — Config Rule mode (continuous evaluation)
+  # ═════════════════════════════════════════════════════════════════
+  # - name: <aws-policy-name>
+  #   resource: aws.s3
+  #   mode:
+  #     type: config-rule
+  #     role: arn:aws:iam::111111111111:role/custodian-lambda
+  #   filters:
+  #     - type: bucket-encryption
+  #       state: False
+  #   actions:
+  #     - type: notify
+  #       template: default.html
+  #       subject: "Unencrypted S3 bucket found"
+  #       to:
+  #         - security@example.com
+  #       transport:
+  #         type: sqs
+  #         queue: https://sqs.us-east-1.amazonaws.com/111111111111/c7n-notify
+
+  # ═════════════════════════════════════════════════════════════════
+  # AWS — Periodic mode (pull-based scan on schedule)
+  # ═════════════════════════════════════════════════════════════════
+  # - name: <aws-periodic-policy-name>
+  #   resource: aws.security-group
+  #   mode:
+  #     type: periodic
+  #     schedule: "rate(1 day)"
+  #     role: arn:aws:iam::111111111111:role/custodian-lambda
+  #   filters:
+  #     - type: ingress
+  #       Ports: [22, 3389]
+  #       Cidr: { type: value, value: "0.0.0.0/0" }
+  #   actions:
+  #     - type: notify
+  #       template: default.html
+  #       subject: "Security group allows public SSH/RDP"
+  #       to:
+  #         - security@example.com
+  #       transport:
+  #         type: sqs
+  #         queue: https://sqs.us-east-1.amazonaws.com/111111111111/c7n-notify
+  #     - type: set-permission
+  #       state: remove
+
+  # ═════════════════════════════════════════════════════════════════
+  # Azure — Pull mode (CLI read-only scan)
+  # ═════════════════════════════════════════════════════════════════
+  # - name: <azure-policy-name>
+  #   resource: azure.storage
+  #   mode:
+  #     type: pull
+  #   filters:
+  #     - type: value
+  #       key: properties.allowBlobPublicAccess
+  #       value: true
+  #   actions:
+  #     - type: notify
+  #       template: default.html
+  #       subject: "Storage account has public blob access enabled"
+  #       to:
+  #         - security@example.com
+  #       transport:
+  #         type: asq
+  #         queue: https://storageexample.queue.core.windows.net/notify
+
+  # ═════════════════════════════════════════════════════════════════
+  # GCP — Pull mode (CLI read-only scan)
+  # ═════════════════════════════════════════════════════════════════
+  # - name: <gcp-policy-name>
+  #   resource: gcp.bucket
+  #   mode:
+  #     type: pull
+  #   filters:
+  #     - type: iam-policy
+  #       key: "bindings[].members[]"
+  #       op: contains
+  #       value: "allUsers"
+  #   actions:
+  #     - type: notify
+  #       template: default.html
+  #       subject: "GCS bucket is public"
+  #       to:
+  #         - security@example.com
+  #       transport:
+  #         type: pubsub
+  #         topic: projects/example-project/topics/c7n-notify

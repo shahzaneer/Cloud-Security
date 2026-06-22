@@ -1,0 +1,95 @@
+# =============================================================================
+# docker-compose.localstack.yaml
+# Purpose: LocalStack (Community/Pro) stack for simulating AWS services locally.
+#          Used across IAM, Compute, Monitoring, and Storage modules for
+#          safe, cost-free hands-on labs.
+#
+# Curriculum cross-references:
+#   - IAM/identity-primitives-per-cloud.md          (IAM lab sandbox)
+#   - IAM/assume-role-chains-and-trust-graphs.md    (role-chaining exercises)
+#   - Compute-Container-Security/lambda-event-source-mapping-abuse.md
+#   - Storage-Data-Security/ (S3 bucket policy labs)
+#   - Monitoring-Detection-SIEM/cloudtrail-activity-and-data-events.md
+#   - Secrets-KMS/ (KMS & Secrets Manager — uncomment below)
+#   - Blue-Team-Defense/labs/landing-zone-mini-lab.md
+#
+# Usage:
+#   docker compose -f docker-compose.localstack.yaml up -d
+#   aws --endpoint-url=http://localhost:4566 s3 mb s3://my-lab-bucket
+#
+# Requirements: Docker Engine 20.10+, docker compose v2
+# Free-tier note: LocalStack Community image (default) includes all services
+#                 listed below at no cost. Pro features (IAM enrichment, Lambda
+#                 cold-start metrics, ECS task orchestration) require a Pro key.
+# =============================================================================
+
+version: "3.8"
+
+services:
+  localstack:
+    container_name: localstack-sandbox
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"            # EDGE_PORT — unified endpoint for all services
+      - "4510-4559:4510-4559"  # extended service ports (optional)
+    environment:
+      - SERVICES=s3,iam,lambda,logs,ssm,ecs,dynamodb
+      # SERVICES comment: KMS and Secrets Manager are disabled by default to
+      # keep Community-tier compatibility. Uncomment the line below to add them:
+      # - SERVICES=s3,iam,lambda,logs,ssm,ecs,dynamodb,kms,secretsmanager
+      - EDGE_PORT=4566
+      - DEBUG=0
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker-reuse
+      - LAMBDA_REMOTE_DOCKER=false
+      - PERSISTENCE=1
+      # Uncomment for detailed AWS API request tracing:
+      # - DEBUG=1
+      # Uncomment if using a LocalStack Pro license (required for ECS):
+      # - LOCALSTACK_API_KEY=${LOCALSTACK_API_KEY}
+    volumes:
+      - "./localstack-data:/tmp/localstack/data"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./localstack-init:/etc/localstack/init/ready.d:ro"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ls-net
+
+  # ---- Optional: awslocal CLI sidecar for convenience ----------------------
+  # awslocal is a thin wrapper around the AWS CLI that points to localhost:4566
+  # automatically. Build it locally or use the published image.
+  awslocal:
+    image: localstack/awslocal:latest
+    container_name: localstack-awslocal
+    entrypoint: /bin/sh -c "echo 'awslocal ready — use: docker exec -it localstack-awslocal awslocal s3 ls' && tail -f /dev/null"
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - ls-net
+
+networks:
+  ls-net:
+    driver: bridge
+    name: ls-net
+
+# ---- LocalStack bootstrap scripts (place in ./localstack-init/) ------------
+# Create the following file at ./localstack-init/01-bootstrap.sh to auto-configure
+# resources on first start:
+#
+#   #!/bin/bash
+#   # Wait for LocalStack to be ready
+#   awslocal s3 mb s3://lab-state-bucket
+#   awslocal s3api put-bucket-versioning --bucket lab-state-bucket \
+#     --versioning-configuration Status=Enabled
+#   awslocal iam create-role --role-name LabRole \
+#     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+#   awslocal logs create-log-group --log-group-name /aws/lambda/lab-function
+#   echo "LocalStack lab bootstrap complete."
+#
+# Reference: IAM/labs/credentialdip-lab.md for full IAM lab setup.

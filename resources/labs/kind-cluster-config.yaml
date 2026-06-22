@@ -1,0 +1,234 @@
+# =============================================================================
+# kind-cluster-config.yaml
+# Purpose: Configuration for a `kind` (Kubernetes IN Docker) cluster used as
+#          the primary K8s attack/defense sandbox across the curriculum.
+#          Provides 1 control-plane + 2 worker nodes with audit logging,
+#          PodSecurity admission, and container runtime introspection mounts.
+#
+# Curriculum cross-references:
+#   - Compute-Container-Security/eks-aks-gke-managed-vs-selfmanaged.md
+#   - Compute-Container-Security/k8s-attack-surface-overview.md
+#   - Compute-Container-Security/container-escape-classes.md
+#   - Compute-Container-Security/rbac-and-service-account-tokens.md
+#   - Compute-Container-Security/pod-security-admission-and-psp-replacements.md
+#   - Compute-Container-Security/labs/kind-escape-lab.md
+#   - Blue-Team-Defense/preventive-guardrails-as-code.md
+#
+# Usage:
+#   kind create cluster --name cloudsec-sandbox --config kind-cluster-config.yaml
+#   kubectl cluster-info --context kind-cloudsec-sandbox
+#
+#   # Verify PodSecurity admission
+#   kubectl label ns default pod-security.kubernetes.io/enforce=restricted
+#
+#   # Destroy
+#   kind delete cluster --name cloudsec-sandbox
+#
+# Requirements: kind >= v0.20.0, Docker, kubectl
+# =============================================================================
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: cloudsec-sandbox
+
+# ---- Nodes: 1 control-plane + 2 workers ------------------------------------
+nodes:
+
+  # Control-plane node — hosts etcd, apiserver, controller-manager, scheduler
+  - role: control-plane
+
+    # Mount the host Docker socket and container runtime directories for
+    # escape-detection and forensics labs.
+    # Reference: Compute-Container-Security/container-escape-classes.md
+    #            IR-Forensics-Cloud/container-k8s-forensics.md
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock
+        propagation: HostToContainer
+      - hostPath: /var/lib/containerd
+        containerPath: /var/lib/containerd
+        propagation: HostToContainer
+      - hostPath: /var/log/containers
+        containerPath: /var/log/containers
+        propagation: HostToContainer
+
+    # Kubeadm config patches applied during cluster bootstrap
+    # Reference: Compute-Container-Security/k8s-attack-surface-overview.md
+    kubeadmConfigPatches:
+      # ---- PodSecurity Admission (PSA) ---------------------------------------
+      # Replaces PodSecurityPolicy (removed in K8s 1.25).
+      # By default, the admission controller enforces "baseline" in all
+      # namespaces. Override per-namespace with labels.
+      # Reference: Compute-Container-Security/pod-security-admission-and-psp-replacements.md
+      - |
+        kind: ClusterConfiguration
+        apiServer:
+          extraArgs:
+            admission-control-config-file: /etc/kubernetes/psa/psa-config.yaml
+
+      # ---- Audit logging enabled --------------------------------------------
+      # Audit logs are essential for detecting anomalous K8s API activity.
+      # Reference: Monitoring-Detection-SIEM/the-security-log-mosaic-per-cloud.md
+      #            Compute-Container-Security/k8s-attack-surface-overview.md
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          extraArgs:
+            audit-log-path: /var/log/kubernetes/audit/audit.log
+            audit-log-maxage: "30"
+            audit-log-maxbackup: "10"
+            audit-log-maxsize: "100"
+            audit-policy-file: /etc/kubernetes/audit-policy.yaml
+          extraVolumes:
+            - name: audit-policy
+              hostPath: /etc/kubernetes/audit-policy.yaml
+              mountPath: /etc/kubernetes/audit-policy.yaml
+              readOnly: true
+              pathType: File
+            - name: audit-log
+              hostPath: /var/log/kubernetes/audit
+              mountPath: /var/log/kubernetes/audit
+              readOnly: false
+              pathType: DirectoryOrCreate
+
+      # ---- Feature gates (example: enable UserNamespaces for escape labs) ----
+      # Reference: Compute-Container-Security/container-escape-classes.md
+      - |
+        apiVersion: kubeadm.k8s.io/v1beta3
+        kind: ClusterConfiguration
+        metadata:
+          name: config
+        apiServer:
+          extraArgs:
+            feature-gates: >
+              UserNamespacesSupport=true,
+              InPlacePodVerticalScaling=true
+        controllerManager:
+          extraArgs:
+            feature-gates: >
+              UserNamespacesSupport=true
+        scheduler:
+          extraArgs:
+            feature-gates: >
+              InPlacePodVerticalScaling=true
+
+    # ---- Pre-load audit policy into the node via extraMounts -----------------
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock
+        propagation: HostToContainer
+      - hostPath: /var/lib/containerd
+        containerPath: /var/lib/containerd
+        propagation: HostToContainer
+      - hostPath: /var/log/containers
+        containerPath: /var/log/containers
+        propagation: HostToContainer
+      # Mount a local audit-policy.yaml onto the control-plane node
+      # Create ./audit-policy.yaml in the same directory before running `kind create`.
+      # Reference: Compute-Container-Security/k8s-attack-surface-overview.md
+      - hostPath: ./audit-policy.yaml
+        containerPath: /etc/kubernetes/audit-policy.yaml
+        readOnly: true
+        propagation: HostToContainer
+
+  # Worker node 1 — workload placement for labs
+  - role: worker
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock
+        propagation: HostToContainer
+      - hostPath: /var/log/containers
+        containerPath: /var/log/containers
+        propagation: HostToContainer
+
+    # Kubelet configuration — enable image credential provider for private
+    # registry exercises (optional)
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        metadata:
+          name: config
+        maxPods: 110                   # default
+        protectKernelDefaults: true   # hardened baseline
+        # Reference: Compute-Container-Security/vm-hardening-baseline.md
+
+  # Worker node 2
+  - role: worker
+    extraMounts:
+      - hostPath: /var/run/docker.sock
+        containerPath: /var/run/docker.sock
+        propagation: HostToContainer
+      - hostPath: /var/log/containers
+        containerPath: /var/log/containers
+        propagation: HostToContainer
+
+    kubeadmConfigPatches:
+      - |
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        metadata:
+          name: config
+        maxPods: 110
+        protectKernelDefaults: true
+
+# =============================================================================
+# Post-creation setup (manual, reference commands)
+# =============================================================================
+#
+# 1. Apply audit policy (if not pre-mounted):
+#    kubectl apply -f audit-policy.yaml   # optional, see cluster config patches
+#
+# 2. Label namespaces for PodSecurity enforcement:
+#    kubectl label ns default pod-security.kubernetes.io/enforce=baseline
+#    kubectl label ns default pod-security.kubernetes.io/audit=restricted
+#    kubectl label ns default pod-security.kubernetes.io/warn=restricted
+#
+# 3. Install Kyverno for policy-as-code (uncomment when needed):
+#    # helm repo add kyverno https://kyverno.github.io/kyverno/
+#    # helm install kyverno kyverno/kyverno -n kyverno --create-namespace
+#    # Reference: Compliance-Audit-Gov/cloud-custodian-and-continuous-compliance.md
+#    #            Blue-Team-Defense/preventive-guardrails-as-code.md
+#
+# 4. Install Falco for runtime threat detection (uncomment when needed):
+#    # helm repo add falcosecurity https://falcosecurity.github.io/charts
+#    # helm install falco falcosecurity/falco -n falco --create-namespace \
+#    #   --set falco.json_output=true \
+#    #   --set falco.file_output.enabled=true
+#    # Reference: Blue-Team-Defense/continuous-hardening-baselines.md
+#
+# 5. Install kube-bench for CIS benchmark scanning (uncomment when needed):
+#    # kubectl apply -f https://raw.githubusercontent.com/aquasecurity/kube-bench/main/job.yaml
+#    # Reference: Compliance-Audit-Gov/frameworks-overview-cis-nist-iso-pci.md
+#
+# =============================================================================
+# Example audit-policy.yaml (save this file in the same directory):
+# =============================================================================
+#
+# apiVersion: audit.k8s.io/v1
+# kind: Policy
+# rules:
+#   # Log all Secret and ConfigMap operations at Metadata level
+#   - level: Metadata
+#     resources:
+#       - group: ""
+#         resources: ["secrets", "configmaps"]
+#   # Log exec into pods at Request level
+#   - level: Request
+#     resources:
+#       - group: ""
+#         resources: ["pods/exec"]
+#   # Log RBAC changes at Request level
+#   - level: Request
+#     resources:
+#       - group: "rbac.authorization.k8s.io"
+#         resources: ["*"]
+#   # Omit request bodies for everything else
+#   - level: Metadata
+#     omitStages:
+#       - "RequestReceived"
+# =============================================================================

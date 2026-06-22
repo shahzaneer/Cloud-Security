@@ -1,0 +1,137 @@
+# IR Runbook Template
+# Derived from 11-IR-Forensics-Cloud/01-ir-runbook-cloud-aware.md
+# Fill all <TODO> markers before use in a live incident.
+
+incident:
+  id: "<INC-YYYY-NNNN>"
+  declared_at: "<ISO-8601 timestamp>"
+  declared_by: "<name / role>"
+  status: "open | investigating | contained | remediated | closed"
+
+severity:
+  level: "P1 | P2 | P3 | P4"
+  justification: "<why this severity>"
+  affected_accounts:
+    aws:
+      - "111111111111"
+      - "<additional-account-id>"
+    azure:
+      - "example-tenant.onmicrosoft.com"
+      - "<additional-tenant>"
+    gcp:
+      - "example-project"
+      - "<additional-project-id>"
+    onprem:
+      - "<hostname or subnet>"
+
+incident_commander:
+  name: "<IC name>"
+  slack: "<#channel>"
+  phone: "<number>"
+
+team:
+  lead: "<name>"
+  comms: "<name>"
+  investigation: ["<name>", "<name>"]
+  containment: ["<name>", "<name>"]
+  forensics: ["<name>"]
+  legal: "<name>"
+
+snapshots:
+  # Per-cloud snapshot / disk-copy instructions
+  aws:
+    - resource_type: "ec2"
+      instance_id: "<i-xxxxxxxxxxxxxxxxx>"
+      snapshot_id: "<snap-xxxxxxxxxxxxxxxxx>"
+      region: "us-east-1"
+      status: "pending | completed"
+    - resource_type: "rds"
+      db_instance: "<db-instance-id>"
+      snapshot_id: "<rds-snapshot-id>"
+      region: "us-east-1"
+      status: "pending | completed"
+  azure:
+    - resource_type: "vm"
+      vm_name: "<vm-name>"
+      disk_snapshot: "<snapshot-resource-id>"
+      region: "eastus"
+      status: "pending | completed"
+  gcp:
+    - resource_type: "compute"
+      instance_name: "<instance-name>"
+      snapshot_name: "<snapshot-name>"
+      zone: "us-central1-a"
+      status: "pending | completed"
+  onprem:
+    - resource_type: "physical"
+      hostname: "<hostname>"
+      disk_image_path: "/mnt/evidence/<hostname>.dd"
+      status: "pending | completed"
+
+revocation:
+  iam_credentials_revoked:
+    aws:
+      - access_key_id: "<AKIAIOSFODNN7EXAMPLE>"
+        user: "<username>"
+        revoked_at: "<ISO-8601>"
+    azure:
+      - object_id: "<00000000-0000-0000-0000-000000000000>"
+        upn: "<user@example-tenant.onmicrosoft.com>"
+        revoked_at: "<ISO-8601>"
+    gcp:
+      - service_account: "<sa-name@example-project.iam.gserviceaccount.com>"
+        key_id: "<key-id>"
+        revoked_at: "<ISO-8601>"
+  session_tokens_revoked:
+    - issuer: "<IdP URL>"
+      session_id: "<session-id>"
+      revoked_at: "<ISO-8601>"
+  vault_keys_rotated:
+    - key_arn: "arn:aws:kms:us-east-1:111111111111:key/<key-id>"
+      rotated_at: "<ISO-8601>"
+
+evidence:
+  bucket_path: "s3://incident-bucket/INC-YYYY-NNNN/"
+  azure_container: "https://storageexample.blob.core.windows.net/evidence/INC-YYYY-NNNN/"
+  gcp_bucket: "gs://evidence-bucket/INC-YYYY-NNNN/"
+  chain_of_custody_log: "<path to CoC file>"
+
+communication:
+  cadence: "every <N hours>"
+  update_channel: "<slack-channel | email-thread>"
+  stakeholders:
+    - name: "<name>"
+      role: "<role>"
+      email: "<email>"
+    - name: "<name>"
+      role: "<role>"
+      email: "<email>"
+  external_notifications:
+    required: false
+    regulator: "<name>"
+    deadline: "<ISO-8601>"
+    status: "not-applicable | pending | filed"
+
+mttd:
+  first_artifact_time: "<ISO-8601>"
+  declared_at: "<ISO-8601>"
+  delta_minutes: <N>
+
+mttr:
+  contained_at: "<ISO-8601>"
+  remediated_at: "<ISO-8601>"
+  delta_minutes: <N>
+
+lessons:
+  what_went_well:
+    - "<item>"
+  what_went_wrong:
+    - "<item>"
+  action_items:
+    - id: "AI-1"
+      owner: "<name>"
+      description: "<what to change>"
+      due: "<ISO-8601>"
+      status: "proposed | in-progress | done"
+  runbook_updates:
+    - "<section to update>"

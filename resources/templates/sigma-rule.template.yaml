@@ -1,0 +1,43 @@
+title: <title>
+id: <generate-uuid>
+status: experimental
+description: <one-line description>
+author: <your-name>
+date: <YYYY-MM-DD>
+modified: <YYYY-MM-DD>
+level: informational
+tags:
+  - cloud
+  - <tactic>
+
+logsource:
+  category: null
+  product: null
+  service: null
+  # ── AWS CloudTrail ──────────────────────
+  # product: aws
+  # service: cloudtrail
+  # ── Azure Activity Log ─────────────────
+  # product: azure
+  # service: activitylog
+  # ── GCP Cloud Audit Logs ────────────────
+  # product: gcp
+  # service: cloudaudit
+  # ── Linux syslog (OnPrem) ───────────────
+  # product: linux
+  # service: syslog
+
+detection:
+  selection:
+    # fieldName|modifier: '<value>'
+  condition: selection
+
+falsepositives:
+  - <explain valid activity that matches>
+
+fields:
+  - <field1>
+  - <field2>
+
+references:
+  - https://github.com/SigmaHQ/sigma
